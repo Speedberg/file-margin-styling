@@ -1,85 +1,86 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
+const CSS_IDENTIFIER = 'speedberg-file-margin-styling';
 
-interface MyPluginSettings {
-	mySetting: string;
+const UNIT_TYPE = {
+	px: 'px',
+	percent: '%',
+	em: 'em',
+	vw: 'vw',
+	vh: 'vh',
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+interface FileMarginSettings {
+	sourceViewMargin: number;
+	sourceViewUnit: string;
+	previewViewMargin: number;
+	previewViewUnit: string;
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+const DEFAULT_SETTINGS: FileMarginSettings = {
+	sourceViewMargin: 0,
+	sourceViewUnit: UNIT_TYPE.px,
+	previewViewMargin: 0,
+	previewViewUnit: UNIT_TYPE.px,
+}
+
+export default class FileMarginPlugin extends Plugin {
+	settings: FileMarginSettings;
 
 	async onload() {
+
 		await this.loadSettings();
+		this.addSettingTab(new FileMarginSettingsTab(this.app, this));
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+		this.addStyle();
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+		this.refresh();
+	}
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+	refresh() {
+		this.updateStyle()
 	}
 
 	onunload() {
+		this.removeStyle();
+	}
 
+	addStyle()
+	{
+		const css = document.createElement('style');
+		css.id = CSS_IDENTIFIER;
+		document.getElementsByTagName("head")[0].appendChild(css);
+		document.body.classList.add(CSS_IDENTIFIER);
+		this.updateStyle();
+	}
+
+	updateStyle()
+	{
+		const styleElement = document.getElementById(CSS_IDENTIFIER);
+
+		if (styleElement == null)
+			return;
+
+		styleElement.innerText = `
+		.markdown-source-view {
+			margin-left: ${this.settings.sourceViewMargin}${this.settings.sourceViewUnit} !important;
+		}
+
+		.markdown-source-view .cm-sizer
+		{
+			margin-left: 0px !important;
+			margin-right: 0px !important;
+		}
+
+		.markdown-preview-view {
+			margin-left: ${this.settings.previewViewMargin}${this.settings.previewViewUnit} !important;
+		}
+		`;
+	}
+
+	removeStyle()
+	{
+		document.getElementById(CSS_IDENTIFIER)?.remove();
 	}
 
 	async loadSettings() {
@@ -91,26 +92,10 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class FileMarginSettingsTab extends PluginSettingTab {
+	plugin: FileMarginPlugin;
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: FileMarginPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -120,18 +105,70 @@ class SampleSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Settings for my awesome plugin.'});
+		containerEl.createEl('h2', {text: 'File Margins'});
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+		.setName('Preview View (Reading View)')
+		.addText(text =>
+			text.setValue(this.plugin.settings.previewViewMargin?.toString() ?? DEFAULT_SETTINGS.previewViewMargin.toString())
 				.onChange(async (value) => {
-					console.log('Secret: ' + value);
-					this.plugin.settings.mySetting = value;
+					let numValue = Number(value);
+					
+					if (isNaN(numValue)) {
+						text.setValue(DEFAULT_SETTINGS.previewViewMargin.toString());
+						return;
+					}
+					
+					this.plugin.settings.previewViewMargin = numValue;
 					await this.plugin.saveSettings();
-				}));
+					this.plugin.refresh();
+				}
+				)
+		)
+		.addDropdown(dropdown => dropdown
+			.addOption(UNIT_TYPE.px, UNIT_TYPE.px)
+			.addOption(UNIT_TYPE.percent, UNIT_TYPE.percent)
+			.addOption(UNIT_TYPE.em, UNIT_TYPE.em)
+			.addOption(UNIT_TYPE.vh, UNIT_TYPE.vh)
+			.addOption(UNIT_TYPE.vw, UNIT_TYPE.vw)
+			.setValue(this.plugin.settings.previewViewUnit)
+			.onChange(async (value) => {
+				this.plugin.settings.previewViewUnit = value;
+				await this.plugin.saveSettings();
+				this.plugin.refresh();
+			})
+		);
+
+		new Setting(containerEl)
+		.setName('Source View (Edit Mode)')
+		.addText(text =>
+			text.setValue(this.plugin.settings.sourceViewMargin?.toString() ?? DEFAULT_SETTINGS.sourceViewMargin.toString())
+				.onChange(async (value) => {
+					let numValue = Number(value);
+					
+					if (isNaN(numValue)) {
+						text.setValue(DEFAULT_SETTINGS.sourceViewMargin.toString());
+						return;
+					}
+					
+					this.plugin.settings.sourceViewMargin = numValue;
+					await this.plugin.saveSettings();
+					this.plugin.refresh();
+				}
+				)
+		)
+		.addDropdown(dropdown => dropdown
+			.addOption(UNIT_TYPE.px, UNIT_TYPE.px)
+			.addOption(UNIT_TYPE.percent, UNIT_TYPE.percent)
+			.addOption(UNIT_TYPE.em, UNIT_TYPE.em)
+			.addOption(UNIT_TYPE.vh, UNIT_TYPE.vh)
+			.addOption(UNIT_TYPE.vw, UNIT_TYPE.vw)
+			.setValue(this.plugin.settings.sourceViewUnit)
+			.onChange(async (value) => {
+				this.plugin.settings.sourceViewUnit = value;
+				await this.plugin.saveSettings();
+				this.plugin.refresh();
+			})
+		);
 	}
 }
